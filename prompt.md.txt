@@ -1,0 +1,1778 @@
+# VAPT RECONNAISSANCE AND TLS ASSESSMENT PLATFORM
+# AUTHORITATIVE IMPLEMENTATION SPECIFICATION
+
+============================================================
+IMPORTANT — READ BEFORE IMPLEMENTATION
+============================================================
+
+This project is NOT a generic URL scanner.
+
+This project is a security-tool orchestration platform that provides a professional UI around REAL open-source security tools.
+
+The most important requirement is:
+
+DO NOT REIMPLEMENT THE DISCOVERY LOGIC OF THEHARVESTER.
+
+DO NOT create a custom subdomain enumeration algorithm and assume it will reproduce theHarvester.
+
+DO NOT generate simulated/fabricated discovery results.
+
+Instead, integrate the actual open-source THEHARVESTER project/implementation and use its real discovery capabilities.
+
+Likewise, use the actual TESTSSL.SH tool for TLS/SSL assessment.
+
+The application should add value through:
+
+- orchestration
+- target validation
+- scope enforcement
+- result validation
+- active/inactive classification
+- HTTP/HTTPS probing
+- result normalization
+- TLS result parsing
+- HTTP header analysis
+- correlation
+- dashboard
+- findings
+- reporting
+- scan history
+- audit logging
+
+The external security tools remain responsible for their specialized security functionality.
+
+
+============================================================
+1. PRIMARY WORKFLOW
+============================================================
+
+The complete application workflow MUST be:
+
+USER
+  |
+  v
+ENTER TARGET DOMAIN / URL
+  |
+  v
+TARGET NORMALIZATION
+  |
+  v
+TARGET SCOPE VALIDATION
+  |
+  v
+THEHARVESTER
+  |
+  v
+REAL DISCOVERY RESULTS
+  |
+  v
+PARSE THEHARVESTER OUTPUT
+  |
+  v
+EXTRACT DISCOVERED HOSTNAMES / SUBDOMAINS
+  |
+  v
+DEDUPLICATION
+  |
+  v
+SCOPE VALIDATION
+  |
+  v
+DNS VALIDATION
+  |
+  v
+HTTP / HTTPS PROBING
+  |
+  v
+ACTIVE / INACTIVE CLASSIFICATION
+  |
+  +----------------------+
+  |                      |
+  | HTTP                 | HTTPS
+  |                      |
+  |                      v
+  |                  TESTSSL.SH
+  |                      |
+  |          +-----------+------------+
+  |          |           |            |
+  |          v           v            v
+  |      Certificate   Ciphers      TLS
+  |      Validation    Analysis     Analysis
+  |          |           |            |
+  +----------+-----------+------------+
+                     |
+                     v
+             HTTP HEADER ANALYSIS
+                     |
+                     v
+              RESULT NORMALIZATION
+                     |
+                     v
+                FINDING ENGINE
+                     |
+                     v
+                  DATABASE
+                     |
+                     v
+              REAL-TIME DASHBOARD
+                     |
+          +----------+----------+
+          |          |          |
+          v          v          v
+         PDF        XML       EXCEL
+
+
+============================================================
+2. CRITICAL ARCHITECTURAL PRINCIPLE
+============================================================
+
+The application consists of two major layers.
+
+LAYER 1:
+SPECIALIZED SECURITY TOOLS
+
+- theHarvester
+- testssl.sh
+
+LAYER 2:
+OUR APPLICATION
+
+- UI
+- API
+- orchestration
+- validation
+- parsing
+- normalization
+- classification
+- database
+- findings
+- reporting
+- real-time updates
+
+Architecture:
+
+                    OUR APPLICATION
+                          |
+                    Scan Orchestrator
+                          |
+             +------------+------------+
+             |                         |
+             v                         v
+       THEHARVESTER               TESTSSL.SH
+       Discovery Engine           TLS Engine
+             |                         |
+             +------------+------------+
+                          |
+                   Result Processing
+                          |
+                   PostgreSQL
+                          |
+                    React UI
+
+
+============================================================
+3. DO NOT REIMPLEMENT THEHARVESTER
+============================================================
+
+This is a HARD requirement.
+
+TheHarvester is an existing open-source reconnaissance project.
+
+The application must leverage the actual theHarvester implementation rather than attempting to recreate its functionality using custom HTTP requests, search-engine scraping, regex-based discovery, or a simplified subdomain list.
+
+The goal is to preserve the discovery capability of the real tool.
+
+Use the actual project as the discovery engine.
+
+Possible integration approaches, in preferred order:
+
+1. Programmatic/library integration if stable and supported.
+2. Controlled subprocess execution of the installed theHarvester CLI.
+3. Integration of a properly licensed project copy/fork when required.
+
+Choose the most maintainable approach after inspecting the installed/current theHarvester implementation.
+
+Do NOT arbitrarily copy individual files from the project without understanding its dependencies and license.
+
+Preserve required open-source license/attribution information.
+
+
+============================================================
+4. INSPECT THEHARVESTER FIRST
+============================================================
+
+Before implementing the discovery adapter:
+
+1. Inspect the installed theHarvester version.
+2. Inspect its CLI/API capabilities.
+3. Inspect its supported output formats.
+4. Inspect its normalized result/evidence model.
+5. Inspect how subdomains/hostnames are represented.
+6. Determine the most reliable machine-readable output format.
+7. Prefer structured output over parsing terminal text.
+
+The integration must be version-aware.
+
+Do not assume that command-line arguments or output formats are identical across versions.
+
+The application should detect tool availability/version during startup or system health checks.
+
+
+============================================================
+5. THEHARVESTER ADAPTER
+============================================================
+
+Create a dedicated adapter:
+
+TheHarvesterAdapter
+
+Responsibilities:
+
+- verify tool availability
+- determine version
+- construct safe execution arguments
+- execute theHarvester
+- capture output
+- capture errors
+- enforce timeout
+- store raw evidence
+- parse structured results
+- return normalized discovery objects
+
+Example conceptual interface:
+
+TheHarvesterAdapter
+    |
+    +-- check_availability()
+    +-- get_version()
+    +-- discover(domain, options)
+    +-- parse_results()
+    +-- normalize_results()
+
+The adapter must NOT contain the actual discovery intelligence.
+
+TheHarvester remains the discovery engine.
+
+
+============================================================
+6. THEHARVESTER EXECUTION
+============================================================
+
+For a target:
+
+example.com
+
+execute the real theHarvester tool using safe process execution.
+
+DO NOT:
+
+- use shell=True with user-controlled input
+- concatenate user input into a shell command
+- execute arbitrary commands
+- scrape terminal output when structured output is available
+
+Use argument arrays.
+
+Conceptually:
+
+[
+    "theHarvester",
+    "...validated arguments..."
+]
+
+The exact command MUST be determined from the installed version's supported CLI.
+
+The application must not assume one fixed version.
+
+
+============================================================
+7. STRUCTURED OUTPUT
+============================================================
+
+Prefer a machine-readable output format supported by theHarvester.
+
+If JSONL is supported by the installed version, use JSONL as the primary automation interface.
+
+Pipeline:
+
+theHarvester
+      |
+      v
+JSONL / structured output
+      |
+      v
+TheHarvesterParser
+      |
+      v
+Normalized DiscoveryResult
+
+
+DO NOT:
+
+theHarvester terminal text
+      |
+      v
+random regex
+      |
+      v
+guessed subdomains
+
+unless structured output is genuinely unavailable.
+
+
+============================================================
+8. DISCOVERY RESULT MODEL
+============================================================
+
+For each discovery observation store:
+
+hostname
+domain
+source
+record_type
+discovered_at
+raw_evidence_reference
+
+Example:
+
+hostname:
+api.example.com
+
+source:
+theHarvester
+
+record_type:
+hostname
+
+status:
+DISCOVERED
+
+
+IMPORTANT:
+
+DISCOVERED does NOT mean:
+
+DNS VALID
+or
+ACTIVE
+
+These are separate states.
+
+
+============================================================
+9. SOURCE ATTRIBUTION
+============================================================
+
+Preserve where each discovery came from whenever theHarvester provides source attribution.
+
+Example:
+
+api.example.com
+
+Discovered By:
+theHarvester
+
+Source:
+<actual source>
+
+This information should be retained in the database.
+
+Do not discard source/provenance information.
+
+
+============================================================
+10. SUBDOMAIN NORMALIZATION
+============================================================
+
+After receiving theHarvester results:
+
+1. Normalize hostnames.
+2. Convert to lowercase.
+3. Remove unnecessary trailing dots.
+4. Remove duplicate records.
+5. Validate hostname syntax.
+6. Validate target scope.
+7. Reject malformed values.
+
+Do not modify valid hostnames unnecessarily.
+
+
+============================================================
+11. TRUE POSITIVE / VALIDATION PIPELINE
+============================================================
+
+A discovered hostname is only a CANDIDATE.
+
+Each candidate must be validated.
+
+Pipeline:
+
+THEHARVESTER DISCOVERY
+        |
+        v
+Candidate Hostname
+        |
+        v
+Scope Validation
+        |
+        v
+DNS Resolution
+        |
+        +---- FAIL → DNS_UNRESOLVED
+        |
+        v
+IP Address
+        |
+        v
+HTTP/HTTPS Probe
+        |
+        +---- Reachable → ACTIVE
+        |
+        +---- Not reachable → DNS_ONLY / INACTIVE
+
+
+============================================================
+12. DNS VALIDATION
+============================================================
+
+For every discovered hostname:
+
+Perform DNS resolution.
+
+Collect:
+
+A records
+AAAA records
+CNAME where appropriate
+
+Store:
+
+hostname
+resolved
+IPv4
+IPv6
+DNS status
+resolution time
+
+Example:
+
+api.example.com
+
+DNS:
+RESOLVED
+
+IPv4:
+192.0.2.10
+
+Status:
+DNS_VALID
+
+
+============================================================
+13. ACTIVE WEB ASSET VALIDATION
+============================================================
+
+After DNS validation:
+
+Probe:
+
+http://hostname
+https://hostname
+
+Capture:
+
+URL
+scheme
+status code
+response time
+redirect location
+content type
+server header where available
+connection error
+
+
+IMPORTANT:
+
+HTTP 403 is NOT inactive.
+
+HTTP 401 is NOT inactive.
+
+HTTP 404 is still evidence that a web service responded.
+
+HTTP 500 is still evidence that a web service responded.
+
+Examples:
+
+200 → ACTIVE
+301 → ACTIVE
+302 → ACTIVE
+403 → ACTIVE
+404 → ACTIVE
+500 → ACTIVE
+
+Timeout/connection failure:
+
+Potentially INACTIVE
+
+Always preserve the actual status code and error.
+
+
+============================================================
+14. ASSET STATUS MODEL
+============================================================
+
+Use explicit states:
+
+DISCOVERED
+DNS_VALID
+ACTIVE
+INACTIVE
+DNS_ONLY
+HTTP_ERROR
+TLS_ERROR
+OUT_OF_SCOPE
+
+Do not collapse all states into TRUE/FALSE.
+
+Example:
+
+api.example.com
+
+Discovery:
+DISCOVERED
+
+DNS:
+DNS_VALID
+
+HTTPS:
+200
+
+Final:
+ACTIVE
+
+
+============================================================
+15. ACTIVE ASSET TABLE
+============================================================
+
+Frontend table:
+
+S.No
+Hostname
+Discovery Source
+DNS Status
+IP Address
+HTTP Status
+HTTPS Status
+Response Time
+Classification
+TLS
+Last Checked
+
+
+============================================================
+16. HTTPS TARGET SELECTION
+============================================================
+
+Only validated HTTPS services should proceed to testssl.sh.
+
+Pipeline:
+
+Discovered Hostname
+      |
+      v
+Scope Validation
+      |
+      v
+DNS Validation
+      |
+      v
+HTTPS Probe
+      |
+      v
+HTTPS Reachable?
+      |
+      YES
+      |
+      v
+TESTSSL.SH
+
+
+============================================================
+17. TESTSSL.SH INTEGRATION
+============================================================
+
+Create:
+
+TestSSLAdapter
+
+Responsibilities:
+
+- verify testssl.sh availability
+- determine version
+- safely execute testssl.sh
+- pass validated HTTPS target
+- capture stdout
+- capture stderr
+- capture exit code
+- enforce timeout
+- preserve raw output
+- parse structured results
+- normalize results
+
+Do NOT recreate testssl.sh functionality using Python when testssl.sh already provides the required analysis.
+
+
+============================================================
+18. TESTSSL OUTPUT
+============================================================
+
+Prefer a structured output format supported by the installed testssl.sh version.
+
+If JSON output is supported, use it.
+
+If structured output is unavailable for a particular required result:
+
+- parse the stable machine-readable output
+- isolate parsing logic inside TestSSLParser
+- preserve raw output
+- never use scattered regex throughout the application
+
+Architecture:
+
+testssl.sh
+    |
+    v
+structured output
+    |
+    v
+TestSSLParser
+    |
+    v
+TLSResult
+
+
+============================================================
+19. TLS ANALYSIS
+============================================================
+
+Collect and display:
+
+TLS 1.0
+TLS 1.1
+TLS 1.2
+TLS 1.3
+
+Protocol status.
+
+Classify according to configurable security policy.
+
+Do not hard-code severity without a configurable policy.
+
+
+============================================================
+20. CIPHER ANALYSIS
+============================================================
+
+Extract testssl.sh cipher information.
+
+For each relevant cipher:
+
+Protocol
+Cipher
+Status
+Strength
+Evidence
+
+Identify:
+
+Strong
+Weak
+Deprecated
+Problematic
+
+Use testssl.sh's actual evidence.
+
+Do not fabricate cipher results.
+
+
+============================================================
+21. CERTIFICATE ANALYSIS
+============================================================
+
+Collect:
+
+Subject
+Issuer
+Serial Number
+Valid From
+Valid Until
+Days Remaining
+SANs
+Hostname Match
+Certificate Chain
+Signature Algorithm
+Public Key Information
+Certificate Validation
+
+Status:
+
+VALID
+EXPIRED
+EXPIRING_SOON
+INVALID
+HOSTNAME_MISMATCH
+
+
+============================================================
+22. CERTIFICATE EXPIRY
+============================================================
+
+Calculate:
+
+days_remaining
+
+Store exact:
+
+valid_from
+valid_until
+
+Severity thresholds must be configurable.
+
+Do not blindly label every certificate warning as a vulnerability.
+
+
+============================================================
+23. HTTP HEADER ANALYSIS
+============================================================
+
+TLS analysis and HTTP header analysis are separate.
+
+Use the HTTP client for HTTP headers.
+
+Collect:
+
+Strict-Transport-Security
+Content-Security-Policy
+X-Content-Type-Options
+X-Frame-Options
+Referrer-Policy
+Permissions-Policy
+
+Also capture:
+
+Server
+X-Powered-By
+Content-Type
+Cache-Control
+
+Classify:
+
+PRESENT
+MISSING
+WARNING
+INFORMATIONAL
+
+Do not automatically treat every missing header as a vulnerability.
+
+
+============================================================
+24. UNIFIED RESULT
+============================================================
+
+Combine:
+
+TheHarvester discovery
++
+DNS result
++
+HTTP result
++
+HTTPS result
++
+HTTP headers
++
+testssl.sh results
+
+into a single assessment model.
+
+Example:
+
+Asset:
+
+api.example.com
+
+Discovery:
+theHarvester
+
+DNS:
+192.0.2.10
+
+HTTP:
+200
+
+HTTPS:
+200
+
+TLS:
+TLS 1.2, TLS 1.3
+
+Certificate:
+VALID
+
+Certificate Expiry:
+112 days
+
+Weak Ciphers:
+NONE DETECTED
+
+HSTS:
+PRESENT
+
+CSP:
+MISSING
+
+
+============================================================
+25. DATABASE
+============================================================
+
+Create relational models:
+
+Scan
+Discovery
+Asset
+DNSResult
+HTTPResult
+HeaderResult
+TLSResult
+CipherResult
+CertificateResult
+Finding
+ToolExecution
+Report
+AuditLog
+
+
+ToolExecution should contain:
+
+tool_name
+tool_version
+scan_id
+started_at
+completed_at
+exit_code
+status
+stdout_reference
+stderr_reference
+
+
+============================================================
+26. RAW EVIDENCE
+============================================================
+
+Preserve raw tool evidence.
+
+For theHarvester:
+
+raw discovery output
+
+For testssl.sh:
+
+raw TLS output
+
+Raw evidence should be associated with the scan and tool execution.
+
+Do not expose secrets.
+
+The normal dashboard should display normalized results.
+
+Authorized analysts may inspect raw output through an expandable section.
+
+
+============================================================
+27. REAL-TIME SCAN
+============================================================
+
+The scan must execute asynchronously.
+
+State machine:
+
+QUEUED
+TARGET_VALIDATION
+THEHARVESTER_RUNNING
+DISCOVERY_PARSING
+SUBDOMAIN_VALIDATION
+DNS_VALIDATION
+HTTP_PROBING
+ACTIVE_ASSETS_IDENTIFIED
+TESTSSL_RUNNING
+HEADER_ANALYSIS
+RESULT_PROCESSING
+REPORT_GENERATION
+COMPLETED
+
+Error:
+
+FAILED
+
+The frontend must receive live events.
+
+
+============================================================
+28. LIVE ACTIVITY
+============================================================
+
+Example:
+
+[10:30:01] Target validated
+[10:30:02] theHarvester started
+[10:30:19] Discovery completed
+[10:30:19] 48 candidate hostnames discovered
+[10:30:20] Hostname validation started
+[10:30:28] 37 DNS-valid hosts
+[10:30:29] HTTP probing started
+[10:30:42] 31 active web assets
+[10:30:43] HTTPS assets identified: 24
+[10:30:44] testssl.sh started: api.example.com
+[10:30:58] TLS analysis completed
+[10:31:02] Header analysis completed
+[10:31:10] Scan completed
+
+
+============================================================
+29. FRONTEND
+============================================================
+
+Use:
+
+React
+Vite
+TypeScript
+Tailwind CSS
+Axios
+React Router
+
+The frontend must NOT execute security tools.
+
+Frontend responsibilities:
+
+- target input
+- scan controls
+- real-time progress
+- results visualization
+- filtering
+- sorting
+- report download
+
+
+============================================================
+30. MAIN UI
+============================================================
+
+Create:
+
+Dashboard
+New Scan
+Scans
+Scan Details
+Assets
+TLS/SSL
+Certificates
+Ciphers
+Headers
+Findings
+Reports
+System Health
+Audit Logs
+
+
+============================================================
+31. DASHBOARD
+============================================================
+
+Show:
+
+Total Scans
+Running Scans
+Completed Scans
+
+Candidate Hostnames
+DNS Valid Hosts
+Active Assets
+Inactive Assets
+HTTPS Assets
+
+Critical
+High
+Medium
+Low
+Informational
+
+Charts:
+
+Asset Status
+HTTP Status
+TLS Findings
+Certificate Status
+Finding Severity
+
+
+============================================================
+32. SYSTEM HEALTH
+============================================================
+
+Display:
+
+theHarvester:
+AVAILABLE / NOT AVAILABLE
+
+Version:
+...
+
+testssl.sh:
+AVAILABLE / NOT AVAILABLE
+
+Version:
+...
+
+PostgreSQL:
+CONNECTED / DISCONNECTED
+
+Redis:
+CONNECTED / DISCONNECTED
+
+Worker:
+RUNNING / STOPPED
+
+
+============================================================
+33. SECURITY
+============================================================
+
+This application is for authorized security testing.
+
+Implement:
+
+Target scope validation
+SSRF protection
+Private IP blocking by default
+Loopback blocking
+Metadata endpoint blocking
+Redirect validation
+DNS validation
+Command injection prevention
+Safe subprocess execution
+Timeouts
+Resource limits
+Concurrency limits
+Authentication
+Authorization
+Audit logging
+
+The application must never become an unrestricted command execution interface.
+
+
+============================================================
+34. COMMAND EXECUTION
+============================================================
+
+Use a controlled ToolRunner abstraction.
+
+Example:
+
+ToolRunner
+   |
+   +-- TheHarvesterRunner
+   |
+   +-- TestSSLRunner
+
+Rules:
+
+- no shell=True
+- no command string concatenation
+- argument arrays
+- executable allowlist
+- timeout
+- stdout limit
+- stderr limit
+- process cleanup
+- exit-code validation
+
+
+============================================================
+35. TOOL INSTALLATION
+============================================================
+
+Do not silently install tools from arbitrary sources.
+
+Provide documentation/scripts for installing:
+
+theHarvester
+testssl.sh
+
+The application should detect whether they are installed.
+
+If missing:
+
+show:
+
+Tool unavailable.
+
+Configure the required tool before running a real scan.
+
+
+============================================================
+36. MOCK MODE
+============================================================
+
+Implement:
+
+SCANNER_MODE=mock
+
+Mock mode should simulate the entire pipeline.
+
+It may simulate:
+
+theHarvester discovery
+DNS
+HTTP
+testssl.sh
+headers
+findings
+
+But the UI MUST clearly display:
+
+MOCK SCAN
+
+Mock data must never be confused with real scan results.
+
+SCANNER_MODE=real
+
+must execute the actual tools.
+
+
+============================================================
+37. NO FABRICATED DATA
+============================================================
+
+This is a HARD requirement.
+
+REAL mode must never fabricate:
+
+subdomains
+IP addresses
+HTTP statuses
+TLS versions
+certificate information
+cipher results
+security findings
+
+Every displayed result must have a traceable source.
+
+Example:
+
+Subdomain:
+api.example.com
+
+Source:
+theHarvester
+
+HTTP:
+Actual HTTP probe
+
+TLS:
+testssl.sh
+
+Certificate:
+Actual certificate/testssl result
+
+
+============================================================
+38. REPORTING
+============================================================
+
+Generate:
+
+PDF
+XML
+Excel
+
+Reports must use the normalized database results.
+
+Do not rerun the scanner during report generation.
+
+
+============================================================
+39. PDF
+============================================================
+
+Include:
+
+Executive Summary
+Target
+Scope
+Scan Information
+Discovery Summary
+Validated Assets
+HTTP Status Summary
+TLS Summary
+Certificate Summary
+Cipher Summary
+HTTP Header Analysis
+Findings
+Recommendations
+Technical Evidence
+Appendix
+
+
+============================================================
+40. XML
+============================================================
+
+Create structured machine-readable XML containing:
+
+scan
+target
+discovery
+assets
+DNS
+HTTP
+headers
+TLS
+certificates
+ciphers
+findings
+
+
+============================================================
+41. EXCEL
+============================================================
+
+Sheets:
+
+Summary
+Discovery
+Assets
+HTTP
+Headers
+TLS
+Certificates
+Ciphers
+Findings
+
+
+============================================================
+42. API
+============================================================
+
+Implement:
+
+POST /api/v1/scans
+
+GET /api/v1/scans
+
+GET /api/v1/scans/{scan_id}
+
+POST /api/v1/scans/{scan_id}/cancel
+
+GET /api/v1/scans/{scan_id}/discoveries
+
+GET /api/v1/scans/{scan_id}/assets
+
+GET /api/v1/scans/{scan_id}/http
+
+GET /api/v1/scans/{scan_id}/headers
+
+GET /api/v1/scans/{scan_id}/tls
+
+GET /api/v1/scans/{scan_id}/certificates
+
+GET /api/v1/scans/{scan_id}/ciphers
+
+GET /api/v1/scans/{scan_id}/findings
+
+GET /api/v1/scans/{scan_id}/raw-output
+
+POST /api/v1/scans/{scan_id}/reports/pdf
+
+POST /api/v1/scans/{scan_id}/reports/xml
+
+POST /api/v1/scans/{scan_id}/reports/excel
+
+
+============================================================
+43. REAL-TIME API
+============================================================
+
+Implement:
+
+WebSocket or SSE
+
+/api/v1/scans/{scan_id}/events
+
+Events:
+
+scan_started
+tool_started
+tool_completed
+discovery_found
+dns_validated
+http_checked
+asset_classified
+testssl_started
+testssl_completed
+header_analysis_completed
+finding_created
+scan_completed
+scan_failed
+
+
+============================================================
+44. BACKEND ARCHITECTURE
+============================================================
+
+Use:
+
+Python
+FastAPI
+SQLAlchemy
+PostgreSQL
+Redis
+Celery or equivalent worker system
+
+Suggested structure:
+
+backend/
+    app/
+        api/
+        core/
+        models/
+        schemas/
+        repositories/
+        services/
+            orchestration/
+            theharvester/
+            dns/
+            http/
+            testssl/
+            headers/
+            findings/
+            reports/
+        workers/
+        utils/
+        main.py
+
+
+============================================================
+45. THEHARVESTER SERVICE
+============================================================
+
+Create:
+
+services/theharvester/
+
+    adapter.py
+    runner.py
+    parser.py
+    models.py
+    exceptions.py
+
+
+Responsibilities:
+
+adapter.py
+    Integration interface
+
+runner.py
+    Safe process execution
+
+parser.py
+    Structured result parsing
+
+models.py
+    Discovery result models
+
+exceptions.py
+    Tool-specific exceptions
+
+
+============================================================
+46. TESTSSL SERVICE
+============================================================
+
+Create:
+
+services/testssl/
+
+    adapter.py
+    runner.py
+    parser.py
+    models.py
+    exceptions.py
+
+
+============================================================
+47. SCAN ORCHESTRATOR
+============================================================
+
+Create:
+
+ScanOrchestrator
+
+Responsibilities:
+
+1. Validate target.
+2. Run theHarvester.
+3. Parse discovery results.
+4. Normalize hostnames.
+5. Validate scope.
+6. Perform DNS validation.
+7. Perform HTTP/HTTPS probing.
+8. Classify assets.
+9. Select HTTPS assets.
+10. Run testssl.sh.
+11. Analyze HTTP headers.
+12. Normalize results.
+13. Generate findings.
+14. Persist results.
+15. Generate reports.
+16. Publish real-time events.
+
+
+============================================================
+48. ERROR ISOLATION
+============================================================
+
+If one asset fails:
+
+DO NOT fail the entire scan.
+
+Example:
+
+Asset 1 → success
+Asset 2 → timeout
+Asset 3 → TLS error
+Asset 4 → success
+
+Continue processing.
+
+Record:
+
+asset 2 = TIMEOUT
+asset 3 = TLS_ERROR
+
+
+============================================================
+49. TESTING
+============================================================
+
+Create tests for:
+
+TheHarvester parser
+TheHarvester adapter
+DNS validation
+Scope validation
+HTTP classification
+TestSSL parser
+Certificate expiry
+Cipher classification
+Header analysis
+Finding engine
+Scan state machine
+Report generation
+SSRF protection
+Command execution safety
+
+
+============================================================
+50. INTEGRATION TEST
+============================================================
+
+Create an end-to-end mock test:
+
+Input:
+
+example.com
+
+Simulated theHarvester output:
+
+api.example.com
+www.example.com
+portal.example.com
+
+Validate:
+
+DNS
+
+Then simulate:
+
+api.example.com → HTTPS 200
+www.example.com → HTTPS 200
+portal.example.com → HTTPS 403
+
+All three should be classified as ACTIVE.
+
+Then simulate testssl.sh results.
+
+Verify:
+
+TLS results
+certificate results
+cipher results
+header results
+findings
+
+Verify reports.
+
+
+============================================================
+51. REAL END-TO-END TEST
+============================================================
+
+Once the environment is configured for real scanning:
+
+1. Enter an explicitly authorized test domain.
+2. Start scan.
+3. Confirm the backend executes the actual theHarvester.
+4. Verify the number of discovery results.
+5. Verify parsed hostnames correspond to actual tool output.
+6. Verify DNS validation.
+7. Verify HTTP/HTTPS status.
+8. Verify active classification.
+9. Verify testssl.sh execution against validated HTTPS endpoints.
+10. Verify TLS/certificate/cipher results.
+11. Verify HTTP headers.
+12. Verify results in database.
+13. Verify results in frontend.
+14. Generate reports.
+
+
+============================================================
+52. DEVELOPMENT PHASES
+============================================================
+
+PHASE 1:
+Inspect existing project.
+
+PHASE 2:
+Inspect installed versions and capabilities of:
+
+theHarvester
+testssl.sh
+
+PHASE 3:
+Create ToolRunner abstraction.
+
+PHASE 4:
+Integrate actual theHarvester.
+
+PHASE 5:
+Implement structured output parsing.
+
+PHASE 6:
+Implement DNS validation.
+
+PHASE 7:
+Implement HTTP/HTTPS probing.
+
+PHASE 8:
+Implement active/inactive classification.
+
+PHASE 9:
+Integrate actual testssl.sh.
+
+PHASE 10:
+Implement testssl parser.
+
+PHASE 11:
+Implement HTTP header analysis.
+
+PHASE 12:
+Implement normalized database.
+
+PHASE 13:
+Implement scan orchestrator.
+
+PHASE 14:
+Implement real-time events.
+
+PHASE 15:
+Implement frontend.
+
+PHASE 16:
+Implement findings.
+
+PHASE 17:
+Implement reports.
+
+PHASE 18:
+Testing and hardening.
+
+
+============================================================
+53. IMPORTANT: DO NOT START BY BUILDING THE UI
+============================================================
+
+First prove the backend tool integration.
+
+The first milestone MUST be:
+
+USER INPUT
+    ↓
+BACKEND
+    ↓
+THEHARVESTER
+    ↓
+REAL STRUCTURED OUTPUT
+    ↓
+PARSED SUBDOMAINS
+    ↓
+DISPLAY/LOG RESULTS
+
+Only after this works should the complete frontend be built.
+
+The second milestone:
+
+Validated subdomains
+    ↓
+HTTP/HTTPS
+    ↓
+ACTIVE/INACTIVE
+
+
+The third milestone:
+
+Active HTTPS assets
+    ↓
+TESTSSL.SH
+    ↓
+REAL TLS RESULTS
+
+
+Then integrate the complete UI.
+
+
+============================================================
+54. ACCEPTANCE CRITERIA
+============================================================
+
+The application is NOT considered complete if:
+
+- subdomains are hard-coded
+- subdomains are fabricated
+- custom discovery replaces theHarvester
+- TLS results are fabricated
+- testssl.sh is not actually executed in real mode
+- HTTP statuses are simulated in real mode
+- the frontend displays static data
+- report data differs from database data
+- raw tool results cannot be traced
+- the application cannot distinguish discovered vs validated vs active
+
+
+============================================================
+55. FINAL ARCHITECTURE
+============================================================
+
+                    USER
+                     |
+                     v
+              React Frontend
+                     |
+                     v
+                FastAPI API
+                     |
+                     v
+              Scan Orchestrator
+                     |
+          +----------+-----------+
+          |                      |
+          v                      v
+     THEHARVESTER              DNS
+     REAL ENGINE              VALIDATION
+          |                      |
+          +----------+-----------+
+                     |
+                     v
+               HTTP/HTTPS
+                 PROBING
+                     |
+                     v
+              ACTIVE ASSETS
+                     |
+                     v
+                TESTSSL.SH
+                REAL ENGINE
+                     |
+          +----------+-----------+
+          |          |            |
+          v          v            v
+      Certificate  Cipher       TLS
+      Analysis     Analysis     Analysis
+          |
+          v
+       HTTP Header
+        Analysis
+          |
+          v
+      Finding Engine
+          |
+          v
+       PostgreSQL
+          |
+          v
+      Real-Time UI
+          |
+     +----+----+----+
+     |         |    |
+     v         v    v
+    PDF       XML  Excel
+
+
+============================================================
+56. FINAL INSTRUCTION TO THE CODING AGENT
+============================================================
+
+DO NOT BUILD A SIMPLIFIED VERSION OF THIS PROJECT.
+
+DO NOT RECREATE THEHARVESTER.
+
+DO NOT RECREATE TESTSSL.SH.
+
+INTEGRATE THE REAL TOOLS.
+
+TheHarvester = discovery engine.
+
+DNS/HTTP validation = our validation layer.
+
+testssl.sh = TLS/SSL analysis engine.
+
+HTTP client = HTTP/header analysis layer.
+
+Our application = orchestration + validation + correlation + visualization + reporting.
+
+The objective is to combine the proven capabilities of mature open-source security tools into a single professional VAPT workflow.
+
+Before writing application code:
+
+1. Inspect the current workspace.
+2. Inspect the existing implementation.
+3. Inspect the installed theHarvester.
+4. Inspect the installed testssl.sh.
+5. Determine their actual supported interfaces/output formats.
+6. Create an implementation plan.
+7. Implement the real tool adapters first.
+8. Test the tool adapters independently.
+9. Then connect them to the scan orchestrator.
+10. Then connect the frontend.
+
+Do not assume the current code is correct.
+
+Do not delete working functionality without understanding it.
+
+If existing scanner code attempts to reproduce theHarvester or testssl.sh functionality, replace that part with the proper tool integration.
+
+The final system must show REAL results in SCANNER_MODE=real.
+
+Begin by inspecting the workspace and the actual installed versions of theHarvester and testssl.sh.
